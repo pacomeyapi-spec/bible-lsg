@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="version" content="1075f52486">
+<title>Bible LSG</title>
+<meta name="description" content="La Bible Louis Segond 1910 : lecture, recherche, favoris, notes et plans de lecture, même sans connexion.">
+<meta name="theme-color" content="#1f2f55">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bible LSG">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+<script>
+  // Thème appliqué avant l'affichage (évite un éclair blanc en mode sombre).
+  (function () {
+    var t = null, s = null;
+    try { var r = JSON.parse(localStorage.getItem("lsg-reglages") || "{}"); t = r.theme; s = r.taille; } catch (e) {}
+    if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "sombre" : "clair";
+    document.documentElement.dataset.theme = t;
+    if (s) document.documentElement.style.setProperty("--taille", s + "px");
+  })();
+</script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ===================== ACCUEIL ===================== -->
+  <section class="view" id="v-accueil" data-tab="accueil">
+    <header class="top">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div><h1>La Sainte Bible</h1><p>Louis Segond 1910</p></div>
+      </div>
+      <button class="icon-btn" data-open-settings aria-label="Réglages"><svg viewBox="0 0 24 24"><use href="#i-reglages"/></svg></button>
+    </header>
+
+    <article class="card votd" id="votd">
+      <div class="eyebrow" id="votd-date">Verset du jour</div>
+      <blockquote id="votd-text" class="scripture">…</blockquote>
+      <div class="votd-foot">
+        <button class="link" id="votd-ref"></button>
+        <span class="spacer"></span>
+        <button class="chip" id="votd-share">Partager</button>
+      </div>
+    </article>
+
+    <button class="card resume" id="resume">
+      <span class="resume-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-livre"/></svg></span>
+      <span class="resume-txt"><span class="eyebrow">Reprendre la lecture</span><strong id="resume-ref">Genèse 1</strong></span>
+      <span class="chev" aria-hidden="true">›</span>
+    </button>
+
+    <article class="card" id="home-plan"></article>
+
+    <div class="quick">
+      <button data-go="fouiller"><svg viewBox="0 0 24 24"><use href="#i-fouiller"/></svg>Fouiller</button>
+      <button data-go="favoris" data-sub="fav"><svg viewBox="0 0 24 24"><use href="#i-etoile"/></svg>Favoris</button>
+      <button data-go="favoris" data-sub="notes"><svg viewBox="0 0 24 24"><use href="#i-note"/></svg>Notes</button>
+      <button data-go="favoris" data-sub="hl"><svg viewBox="0 0 24 24"><use href="#i-surligner"/></svg>Surlignés</button>
+    </div>
+
+    <div class="downloads web-only" id="downloads">
+      <a class="dl" id="dl-epub" href="/epub" hidden><svg viewBox="0 0 24 24"><use href="#i-livre"/></svg><span><strong>Télécharger l'ePub</strong><small>iPad, liseuse, Livres</small></span></a>
+      <a class="dl" id="dl-apk" href="/apk" hidden><svg viewBox="0 0 24 24"><use href="#i-android"/></svg><span><strong>Installer sur Android</strong><small>Appli hors ligne (APK)</small></span></a>
+    </div>
+
+    <p class="mention">Texte : Louis Segond 1910, domaine public.</p>
+  </section>
+
+  <!-- ===================== LIRE ===================== -->
+  <section class="view" id="v-lire" data-tab="lire">
+    <header class="rbar">
+      <button class="icon-btn" id="r-prev" aria-label="Chapitre précédent"><svg viewBox="0 0 24 24"><use href="#i-gauche"/></svg></button>
+      <button class="rtitle" id="r-title" aria-label="Choisir un livre et un chapitre"><span id="r-title-txt">Genèse 1</span><svg viewBox="0 0 24 24"><use href="#i-bas"/></svg></button>
+      <button class="icon-btn" id="r-next" aria-label="Chapitre suivant"><svg viewBox="0 0 24 24"><use href="#i-droite"/></svg></button>
+      <span class="spacer"></span>
+      <button class="icon-btn" id="r-listen" aria-label="Écouter le chapitre"><svg viewBox="0 0 24 24"><use href="#i-ecouter"/></svg></button>
+      <button class="icon-btn" data-open-settings aria-label="Taille et thème"><span class="aa">Aa</span></button>
+    </header>
+    <article id="r-text" class="bible" lang="fr"></article>
+    <nav class="r-foot">
+      <button class="btn ghost" id="r-prev2">‹ <span></span></button>
+      <button class="btn ghost" id="r-next2"><span></span> ›</button>
+    </nav>
+  </section>
+
+  <!-- Sélecteur livre / chapitre -->
+  <section class="view picker" id="v-picker" data-tab="lire" hidden>
+    <header class="top small">
+      <button class="icon-btn" id="pk-back" aria-label="Retour"><svg viewBox="0 0 24 24"><use href="#i-gauche"/></svg></button>
+      <h2 id="pk-title">Choisir un livre</h2>
+    </header>
+    <div id="pk-books">
+      <div class="seg" role="tablist">
+        <button data-t="AT" class="on">Ancien Testament</button>
+        <button data-t="NT">Nouveau Testament</button>
+      </div>
+      <div class="books" id="pk-list"></div>
+    </div>
+    <div id="pk-chaps" hidden>
+      <div class="chaps" id="pk-grid"></div>
+    </div>
+  </section>
+
+  <!-- ===================== FOUILLER ===================== -->
+  <section class="view" id="v-fouiller" data-tab="fouiller">
+    <header class="top small"><h2>Fouiller les Écritures</h2></header>
+    <form class="searchbox" id="s-form" autocomplete="off">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-fouiller"/></svg>
+      <input id="s-input" type="search" enterkeyhint="search" placeholder="Un mot, un nom, « une expression » ou Jean 3:16" aria-label="Rechercher">
+      <button type="button" id="s-clear" class="icon-btn" aria-label="Effacer" hidden>×</button>
+    </form>
+    <div class="s-opts">
+      <div class="seg small" id="s-mode">
+        <button data-m="mot" class="on">Mot entier</button>
+        <button data-m="debut">Début de mot</button>
+        <button data-m="partout">Partout</button>
+      </div>
+      <select id="s-scope" aria-label="Où chercher"></select>
+    </div>
+    <div id="s-status" class="s-status" aria-live="polite"></div>
+    <div id="s-ref"></div>
+    <div id="s-dist"></div>
+    <ol id="s-results" class="results"></ol>
+    <div id="s-more"></div>
+    <div id="s-help" class="s-help">
+      <div id="s-history"></div>
+      <h3>Comment fouiller</h3>
+      <ul>
+        <li><b>eternel</b> trouve aussi « Éternel » : accents et majuscules ne comptent pas.</li>
+        <li><b>"je suis le chemin"</b> entre guillemets : l'expression exacte.</li>
+        <li><b>foi espérance</b> : les versets qui contiennent tous ces mots.</li>
+        <li><b>Jean 3:16</b>, <b>jn 3 16</b>, <b>Ps 23</b>, <b>1 Co 13</b> : ouvre directement le passage.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===================== FAVORIS ===================== -->
+  <section class="view" id="v-favoris" data-tab="favoris">
+    <header class="top small"><h2>Mes versets</h2></header>
+    <div class="seg" id="f-seg">
+      <button data-s="fav" class="on">Favoris</button>
+      <button data-s="hl">Surlignés</button>
+      <button data-s="notes">Notes</button>
+    </div>
+    <div class="searchbox small" id="f-search-wrap" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-fouiller"/></svg>
+      <input id="f-search" type="search" placeholder="Chercher dans mes notes" aria-label="Chercher dans mes notes">
+    </div>
+    <div id="f-list" class="mylist"></div>
+    <div class="backup">
+      <h3>Sauvegarde</h3>
+      <p>Gardez une copie de vos favoris, surlignages, notes et plans dans un fichier.</p>
+      <div class="row">
+        <button class="btn" data-export>Exporter</button>
+        <button class="btn ghost" data-import>Importer</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PLANS ===================== -->
+  <section class="view" id="v-plans" data-tab="plans">
+    <header class="top small" id="pl-head"><h2>Plans de lecture</h2></header>
+    <div id="pl-body"></div>
+  </section>
+
+</div>
+
+<!-- Barre d'actions sur les versets -->
+<div id="vbar" class="sheet vbar" hidden>
+  <div class="vbar-head"><strong id="vb-ref"></strong><button class="icon-btn" id="vb-close" aria-label="Fermer">×</button></div>
+  <div class="vbar-colors">
+    <button data-hl="1" class="sw sw1" aria-label="Surligner en jaune"></button>
+    <button data-hl="2" class="sw sw2" aria-label="Surligner en vert"></button>
+    <button data-hl="3" class="sw sw3" aria-label="Surligner en bleu"></button>
+    <button data-hl="4" class="sw sw4" aria-label="Surligner en rose"></button>
+    <button data-hl="0" class="sw sw0" aria-label="Enlever le surlignage">⌫</button>
+  </div>
+  <div class="vbar-actions">
+    <button id="vb-fav"><svg viewBox="0 0 24 24"><use href="#i-etoile"/></svg><span>Favori</span></button>
+    <button id="vb-note"><svg viewBox="0 0 24 24"><use href="#i-note"/></svg><span>Note</span></button>
+    <button id="vb-copy"><svg viewBox="0 0 24 24"><use href="#i-copier"/></svg><span>Copier</span></button>
+    <button id="vb-share"><svg viewBox="0 0 24 24"><use href="#i-partager"/></svg><span>Partager</span></button>
+    <button id="vb-listen"><svg viewBox="0 0 24 24"><use href="#i-ecouter"/></svg><span>Écouter</span></button>
+  </div>
+</div>
+
+<!-- Lecteur audio -->
+<div id="player" class="player" hidden>
+  <span class="pl-dot" aria-hidden="true"></span>
+  <span id="pl-label">Lecture</span>
+  <span class="spacer"></span>
+  <button class="icon-btn" id="pl-toggle" aria-label="Pause"><svg viewBox="0 0 24 24"><use href="#i-pause"/></svg></button>
+  <button class="icon-btn" id="pl-stop" aria-label="Arrêter"><svg viewBox="0 0 24 24"><use href="#i-stop"/></svg></button>
+</div>
+
+<!-- Fenêtres -->
+<div id="scrim" class="scrim" hidden></div>
+<div id="settings" class="sheet modal" hidden role="dialog" aria-label="Réglages">
+  <div class="sheet-head"><h2>Réglages</h2><button class="icon-btn" data-close aria-label="Fermer">×</button></div>
+  <div class="set-preview scripture" id="set-preview"><sup>16</sup>Car Dieu a tant aimé le monde…</div>
+  <label class="set-row"><span>Taille du texte</span>
+    <span class="range"><small>A</small><input type="range" id="set-size" min="16" max="36" step="1"><big>A</big></span></label>
+  <div class="set-row"><span>Thème</span>
+    <div class="seg small" id="set-theme"><button data-v="clair">Clair</button><button data-v="sepia">Sépia</button><button data-v="sombre">Sombre</button></div></div>
+  <div class="set-row"><span>Police</span>
+    <div class="seg small" id="set-font"><button data-v="serif">Avec empattement</button><button data-v="sans">Sans</button></div></div>
+  <div class="set-row"><span>Mise en page</span>
+    <div class="seg small" id="set-layout"><button data-v="para">Paragraphe</button><button data-v="ligne">Un verset par ligne</button></div></div>
+  <label class="set-row switch"><span>Numéros des versets</span><input type="checkbox" id="set-nums"><i></i></label>
+  <div class="set-row col"><span>Sauvegarde</span>
+    <div class="row"><button class="btn small" data-export>Exporter mes données</button><button class="btn small ghost" data-import>Importer</button></div></div>
+  <p class="mention">Texte : Louis Segond 1910, domaine public.<br><small id="set-version"></small></p>
+</div>
+
+<div id="notebox" class="sheet modal" hidden role="dialog" aria-label="Note">
+  <div class="sheet-head"><h2 id="nb-title">Note</h2><button class="icon-btn" data-close aria-label="Fermer">×</button></div>
+  <p class="nb-verse scripture" id="nb-verse"></p>
+  <textarea id="nb-text" rows="6" placeholder="Écrivez votre note, votre méditation, une idée de prédication…"></textarea>
+  <div class="row end">
+    <button class="btn ghost danger" id="nb-del">Supprimer</button>
+    <span class="spacer"></span>
+    <button class="btn" id="nb-save">Enregistrer</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<input type="file" id="import-file" accept="application/json,.json,text/plain" hidden>
+
+<!-- Onglets -->
+<nav class="tabbar" id="tabbar">
+  <button data-tab="accueil" class="on"><svg viewBox="0 0 24 24"><use href="#i-accueil"/></svg><span>Accueil</span></button>
+  <button data-tab="lire"><svg viewBox="0 0 24 24"><use href="#i-livre"/></svg><span>Lire</span></button>
+  <button data-tab="fouiller"><svg viewBox="0 0 24 24"><use href="#i-fouiller"/></svg><span>Fouiller</span></button>
+  <button data-tab="favoris"><svg viewBox="0 0 24 24"><use href="#i-etoile"/></svg><span>Favoris</span></button>
+  <button data-tab="plans"><svg viewBox="0 0 24 24"><use href="#i-plan"/></svg><span>Plans</span></button>
+</nav>
+
+<div id="loading" class="loading"><span class="brand-mark big" aria-hidden="true"></span><p>Ouverture de la Bible…</p></div>
+
+<!-- Icônes -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3.5 10.5 12 4l8.5 6.5V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-livre" viewBox="0 0 24 24"><path d="M12 6.5C10 5 7 4.6 3.5 5v13.5c3.5-.4 6.5 0 8.5 1.5 2-1.5 5-1.9 8.5-1.5V5C17 4.6 14 5 12 6.5zm0 0V20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-fouiller" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m15 15 5.5 5.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-etoile" viewBox="0 0 24 24"><path d="m12 3.8 2.5 5.2 5.7.7-4.2 3.9 1.1 5.6L12 16.4l-5.1 2.8L8 13.6 3.8 9.7l5.7-.7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-plan" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 3v4M16 3v4M4 10h16M8.5 14.5l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z M15 4v4h4 M8 12h8M8 16h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-surligner" viewBox="0 0 24 24"><path d="m14.5 4.5 5 5-8 8H6.5v-5z M4 21h16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-copier" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-partager" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4M6 12v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-ecouter" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-gauche" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-droite" viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-bas" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-reglages" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-android" viewBox="0 0 24 24"><path d="M6 10.5a6 6 0 0 1 12 0V18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1z M8 5.5 6.8 3.8M16 5.5l1.2-1.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="9.5" cy="9.5" r="1" fill="currentColor"/><circle cx="14.5" cy="9.5" r="1" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<script src="app.js"></script>
+</body>
+</html>

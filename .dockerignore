@@ -1,0 +1,7 @@
+android
+.github
+.git
+*.py
+__pycache__
+README.md
+.gitignore

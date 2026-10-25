@@ -1,0 +1,16 @@
+{
+  "name": "Bible Louis Segond 1910",
+  "short_name": "Bible LSG",
+  "description": "La Bible Louis Segond 1910 : lecture, recherche, favoris, notes et plans de lecture, même sans connexion.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fbf7ee",
+  "theme_color": "#1f2f55",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
