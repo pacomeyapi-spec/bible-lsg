@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="version" content="1075f52486">
+<meta name="version" content="9eaa469ef7">
 <title>Bible LSG</title>
 <meta name="description" content="La Bible Louis Segond 1910 : lecture, recherche, favoris, notes et plans de lecture, même sans connexion.">
 <meta name="theme-color" content="#1f2f55">
@@ -56,6 +56,15 @@
       <span class="chev" aria-hidden="true">›</span>
     </button>
 
+    <article class="card comm-card" id="home-comm" hidden>
+      <span class="comm-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-commentaire"/></svg></span>
+      <div>
+        <div class="eyebrow">Commentaire de Matthew Henry</div>
+        <p>Pour chaque chapitre, le plan et les explications du pasteur Matthew Henry (1706), section par section. Dans la lecture, touchez <b>Commentaire</b> en haut, ou un verset.</p>
+        <button class="chip" id="home-comm-go"><span>Commentaire de <span id="home-comm-ref">Genèse 1</span> ›</span></button>
+      </div>
+    </article>
+
     <article class="card" id="home-plan"></article>
 
     <div class="quick">
@@ -67,10 +76,11 @@
 
     <div class="downloads web-only" id="downloads">
       <a class="dl" id="dl-epub" href="/epub" hidden><svg viewBox="0 0 24 24"><use href="#i-livre"/></svg><span><strong>Télécharger l'ePub</strong><small>iPad, liseuse, Livres</small></span></a>
+      <a class="dl" id="dl-epubc" href="/epub-commentaire" hidden><svg viewBox="0 0 24 24"><use href="#i-commentaire"/></svg><span><strong>Commentaire en ePub</strong><small>Matthew Henry, toute la Bible</small></span></a>
       <a class="dl" id="dl-apk" href="/apk" hidden><svg viewBox="0 0 24 24"><use href="#i-android"/></svg><span><strong>Installer sur Android</strong><small>Appli hors ligne (APK)</small></span></a>
     </div>
 
-    <p class="mention">Texte : Louis Segond 1910, domaine public.</p>
+    <p class="mention">Texte : Louis Segond 1910, domaine public.<span class="comm-only"><br>Commentaire : Matthew Henry (1706), domaine public ; traduction française Yapson AppStore.</span></p>
   </section>
 
   <!-- ===================== LIRE ===================== -->
@@ -80,6 +90,7 @@
       <button class="rtitle" id="r-title" aria-label="Choisir un livre et un chapitre"><span id="r-title-txt">Genèse 1</span><svg viewBox="0 0 24 24"><use href="#i-bas"/></svg></button>
       <button class="icon-btn" id="r-next" aria-label="Chapitre suivant"><svg viewBox="0 0 24 24"><use href="#i-droite"/></svg></button>
       <span class="spacer"></span>
+      <button class="icon-btn comm-only" id="r-comm" aria-label="Commentaire du chapitre" aria-pressed="false"><svg viewBox="0 0 24 24"><use href="#i-commentaire"/></svg><span class="lbl">Commentaire</span></button>
       <button class="icon-btn" id="r-listen" aria-label="Écouter le chapitre"><svg viewBox="0 0 24 24"><use href="#i-ecouter"/></svg></button>
       <button class="icon-btn" data-open-settings aria-label="Taille et thème"><span class="aa">Aa</span></button>
     </header>
@@ -123,12 +134,24 @@
         <button data-m="partout">Partout</button>
       </div>
       <select id="s-scope" aria-label="Où chercher"></select>
+      <label class="s-comm comm-only"><input type="checkbox" id="s-comm"><span>Chercher aussi dans le commentaire</span></label>
     </div>
-    <div id="s-status" class="s-status" aria-live="polite"></div>
     <div id="s-ref"></div>
-    <div id="s-dist"></div>
-    <ol id="s-results" class="results"></ol>
-    <div id="s-more"></div>
+    <div class="seg small s-groups" id="s-groups" role="tablist" hidden>
+      <button data-grp="bible" class="on">Bible</button>
+      <button data-grp="comm">Commentaire</button>
+    </div>
+    <div id="s-bible">
+      <div id="s-status" class="s-status" aria-live="polite"></div>
+      <div id="s-dist"></div>
+      <ol id="s-results" class="results"></ol>
+      <div id="s-more"></div>
+    </div>
+    <div id="s-commres" hidden>
+      <div id="s-cstatus" class="s-status" aria-live="polite"></div>
+      <ol id="s-cresults" class="results cresults"></ol>
+      <div id="s-cmore"></div>
+    </div>
     <div id="s-help" class="s-help">
       <div id="s-history"></div>
       <h3>Comment fouiller</h3>
@@ -174,7 +197,7 @@
 
 <!-- Barre d'actions sur les versets -->
 <div id="vbar" class="sheet vbar" hidden>
-  <div class="vbar-head"><strong id="vb-ref"></strong><button class="icon-btn" id="vb-close" aria-label="Fermer">×</button></div>
+  <div class="vbar-head"><strong id="vb-ref"></strong><span class="spacer"></span><button class="chip comm-only" id="vb-comm"><svg viewBox="0 0 24 24"><use href="#i-commentaire"/></svg>Commentaire</button><button class="icon-btn" id="vb-close" aria-label="Fermer">×</button></div>
   <div class="vbar-colors">
     <button data-hl="1" class="sw sw1" aria-label="Surligner en jaune"></button>
     <button data-hl="2" class="sw sw2" aria-label="Surligner en vert"></button>
@@ -190,6 +213,17 @@
     <button id="vb-listen"><svg viewBox="0 0 24 24"><use href="#i-ecouter"/></svg><span>Écouter</span></button>
   </div>
 </div>
+
+<!-- Commentaire de Matthew Henry : feuille glissante (téléphone) ou colonne à droite (tablette) -->
+<aside id="comm" class="comm" hidden aria-label="Commentaire de Matthew Henry">
+  <div class="cm-grip" id="cm-grip" aria-hidden="true"><i></i></div>
+  <div class="cm-head">
+    <h2 id="cm-title">Commentaire de Matthew Henry</h2>
+    <button class="icon-btn" data-open-settings aria-label="Taille et thème"><span class="aa">Aa</span></button>
+    <button class="icon-btn" id="cm-close" aria-label="Fermer le commentaire">×</button>
+  </div>
+  <div class="cm-body" id="cm-body" lang="fr"></div>
+</aside>
 
 <!-- Lecteur audio -->
 <div id="player" class="player" hidden>
@@ -216,7 +250,7 @@
   <label class="set-row switch"><span>Numéros des versets</span><input type="checkbox" id="set-nums"><i></i></label>
   <div class="set-row col"><span>Sauvegarde</span>
     <div class="row"><button class="btn small" data-export>Exporter mes données</button><button class="btn small ghost" data-import>Importer</button></div></div>
-  <p class="mention">Texte : Louis Segond 1910, domaine public.<br><small id="set-version"></small></p>
+  <p class="mention">Texte : Louis Segond 1910, domaine public.<span class="comm-only"><br>Commentaire : Matthew Henry (1706), domaine public ; traduction française Yapson AppStore.</span><br><small id="set-version"></small></p>
 </div>
 
 <div id="notebox" class="sheet modal" hidden role="dialog" aria-label="Note">
@@ -264,6 +298,7 @@
     <symbol id="i-droite" viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-bas" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-reglages" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-commentaire" viewBox="0 0 24 24"><path d="M4.5 5.5h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4.5 3.5v-3.5h-1a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z M8 9.5h8M8 12.5h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
     <symbol id="i-android" viewBox="0 0 24 24"><path d="M6 10.5a6 6 0 0 1 12 0V18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1z M8 5.5 6.8 3.8M16 5.5l1.2-1.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="9.5" cy="9.5" r="1" fill="currentColor"/><circle cx="14.5" cy="9.5" r="1" fill="currentColor"/></symbol>
   </defs>
 </svg>

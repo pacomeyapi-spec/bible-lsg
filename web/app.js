@@ -184,6 +184,7 @@
       $("#v-" + name).classList.add("on");
     }
     if (name !== "lire") clearSel();
+    syncComm();
     if (name === "accueil") renderHome();
     if (name === "favoris") renderMine();
     if (name === "plans") renderPlans();
@@ -211,6 +212,7 @@
     if (closeModal()) return true;
     if (sel.size) { clearSel(); return true; }
     if (curTab === "lire" && pickerOpen) { pickerBack(); return true; }
+    if (curTab === "lire" && COMM.open) { closeComm(); return true; }
     if (curTab === "plans" && planOpen) { planOpen = null; renderPlans(); return true; }
     while (tabHist.length) {
       const t = tabHist.pop();
@@ -317,6 +319,7 @@
         view.scrollTop = 0;
       }
       savePos();
+      if (COMM.open && curTab === "lire") renderComm();
     };
     if (dir && !opts.noAnim) {
       art.classList.add(dir > 0 ? "slide-l" : "slide-r");
@@ -353,6 +356,7 @@
   }
   function openRef(bi, c, v, v2) {
     pickerOpen = false;
+    syncComm(true);
     $("#v-picker").hidden = true;
     $("#v-lire").hidden = false;
     if (curTab !== "lire") showTab("lire");
@@ -422,6 +426,7 @@
     pkTestament = BOOKS[cur.bi].t;
     pkBook = bookFirst ? -1 : -1;
     $("#v-picker").hidden = false;
+    syncComm();
     renderPicker();
     $$(".view").forEach((x) => x.classList.remove("on"));
     $("#v-picker").classList.add("on");
@@ -433,6 +438,7 @@
     pickerOpen = false;
     $("#v-picker").classList.remove("on");
     $("#v-lire").classList.add("on");
+    syncComm();
   }
   function pickerBack() {
     if (pkBook >= 0) { pkBook = -1; renderPicker(); } else closePicker();
@@ -540,6 +546,11 @@
       clearSel();
     });
     $("#vb-share").addEventListener("click", () => { shareText(selText(sel)); clearSel(); });
+    $("#vb-comm").addEventListener("click", () => {
+      const first = Math.min.apply(null, Array.from(sel));
+      clearSel();
+      openComm({ verse: VV[first] });
+    });
     $("#vb-listen").addEventListener("click", () => {
       const first = Math.min.apply(null, Array.from(sel));
       clearSel();
@@ -780,7 +791,7 @@
     return out + esc(text.slice(pos));
   }
 
-  let S = { mode: store.get("smode", "mot"), scope: "tout", res: null, shown: 0, q: "" };
+  let S = { mode: store.get("smode", "mot"), scope: "tout", res: null, shown: 0, q: "", withComm: !!store.get("scomm", false), cres: null, cshown: 0, grp: "bible" };
   const PAGE = 40;
   function searchNow(fromSubmit) {
     const q = $("#s-input").value.trim();
@@ -794,7 +805,8 @@
       return;
     }
     if (!q || ref || (!fromSubmit && norm(q).replace(/[^a-z0-9]/g, "").length < 2)) {
-      S.res = null;
+      S.res = null; S.cres = null;
+      renderGroups();
       $("#s-status").textContent = "";
       $("#s-dist").innerHTML = ""; $("#s-results").innerHTML = ""; $("#s-more").innerHTML = "";
       $("#s-help").hidden = !!ref;
@@ -811,6 +823,66 @@
     S.res = runSearch(q, S.mode, S.scope);
     S.shown = 0;
     renderResults();
+    searchComm(q);
+  }
+  // Recherche dans le commentaire (case « Chercher aussi dans le commentaire ») : résultats dans un onglet à part.
+  function searchComm(q) {
+    S.cres = null;
+    $("#s-cresults").innerHTML = ""; $("#s-cmore").innerHTML = "";
+    if (!S.withComm || !S.res) { S.grp = "bible"; renderGroups(); return; }
+    renderGroups();
+    $("#s-cstatus").textContent = COMM.idx ? "" : "Chargement du commentaire…";
+    const mode = S.mode, scope = S.scope;
+    ensureCommIndex().then(() => {
+      if (S.q !== q || S.mode !== mode || S.scope !== scope || !S.withComm) return;
+      S.cres = runCommSearch(q, mode, scope);
+      if (S.cres && S.grp === "bible" && S.res && !S.res.ids.length && S.cres.list.length) S.grp = "comm";
+      renderCommResults();
+      renderGroups();
+    }).catch(() => {
+      if (S.q !== q) return;
+      $("#s-cstatus").textContent = navigator.onLine === false ? "Commentaire indisponible hors connexion." : "Commentaire indisponible pour l'instant.";
+    });
+  }
+  function renderGroups() {
+    const on = S.withComm && !!S.res;
+    $("#s-groups").hidden = !on;
+    if (!on) S.grp = "bible";
+    const nb = S.res ? S.res.ids.length : 0;
+    $('#s-groups [data-grp="bible"]').textContent = "Bible · " + fmt(nb);
+    $('#s-groups [data-grp="comm"]').textContent = "Commentaire" + (S.cres ? " · " + fmt(S.cres.list.length) : " …");
+    $$("#s-groups button").forEach((b) => b.classList.toggle("on", b.dataset.grp === S.grp));
+    $("#s-bible").hidden = S.grp !== "bible";
+    $("#s-commres").hidden = S.grp !== "comm";
+  }
+  function renderCommResults() {
+    const r = S.cres, list = $("#s-cresults");
+    list.innerHTML = ""; $("#s-cmore").innerHTML = "";
+    S.cshown = 0;
+    if (!r) { $("#s-cstatus").textContent = ""; return; }
+    const where = S.scope !== "tout" ? " · " + esc(scopeName(S.scope)) : "";
+    if (!r.list.length) {
+      $("#s-cstatus").innerHTML = "Commentaire : aucun résultat" + where;
+      list.innerHTML = '<li class="empty"><svg viewBox="0 0 24 24"><use href="#i-commentaire"/></svg>Le commentaire ne contient pas cette recherche.</li>';
+      return;
+    }
+    $("#s-cstatus").innerHTML = "Commentaire : <b>" + fmt(r.list.length) + "</b> résultat" + (r.list.length > 1 ? "s" : "") + where;
+    moreCommResults();
+  }
+  function moreCommResults() {
+    const r = S.cres;
+    if (!r) return;
+    const end = Math.min(r.list.length, S.cshown + PAGE);
+    let h = "";
+    for (let i = S.cshown; i < end; i++) {
+      const x = r.list[i];
+      h += '<li><button data-cres="' + i + '"><div class="rref">' + esc(chapLabel(x.bi, x.cc)) + "<small>" + esc(secTitle(x.s, x.cc, true)) +
+        '</small></div><div class="rtxt">' + commSnippet(x.s, r.terms) + "</div></button></li>";
+    }
+    $("#s-cresults").insertAdjacentHTML("beforeend", h);
+    S.cshown = end;
+    $("#s-cmore").innerHTML = end < r.list.length ? '<div class="s-more"><button class="btn ghost" id="s-cmorebtn">Afficher la suite (' + fmt(r.list.length - end) + ")</button></div>" : "";
+    if (end < r.list.length) $("#s-cmorebtn").onclick = moreCommResults;
   }
   function renderRefCard(ref) {
     const box = $("#s-ref");
@@ -932,6 +1004,25 @@
       searchNow(false);
     }));
     $("#s-scope").addEventListener("change", (e) => setScope(e.target.value));
+    $("#s-comm").checked = S.withComm;
+    $("#s-comm").addEventListener("change", (e) => {
+      S.withComm = e.target.checked; store.set("scomm", S.withComm);
+      if (!S.withComm) S.grp = "bible";
+      if (S.res) searchComm(S.q); else renderGroups();
+    });
+    $$("#s-groups button").forEach((b) => b.addEventListener("click", () => {
+      S.grp = b.dataset.grp; renderGroups();
+    }));
+    $("#s-cresults").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-cres]");
+      if (!b || !S.cres) return;
+      pushHistory(S.q);
+      const x = S.cres.list[+b.dataset.cres];
+      const r = x.s.ref;
+      const c = !r || touches(r, x.cc) ? x.cc : r[0];
+      openRef(x.bi, c, 0);
+      openComm({ key: x.key, terms: S.cres.terms, showVerses: true });
+    });
     $("#s-dist").addEventListener("click", (e) => {
       const b = e.target.closest("[data-book]");
       if (b) setScope(S.scope === b.dataset.book ? "tout" : b.dataset.book);
@@ -949,6 +1040,275 @@
       if (e.target.id === "hist-clear") { store.set("histo", []); renderHistory(); }
     });
     renderHistory();
+  }
+
+
+  // ------------------------------------------------------------------ commentaire de Matthew Henry
+  // commentaire/index.json (titre, licence, chapitres commentés) puis un fichier par livre, chargé
+  // seulement à l'ouverture du panneau. APK (file://) : commentaire/*.js par balise script.
+  const COMM = { index: null, indexP: null, books: {}, bookP: {}, open: false, tall: true, shown: "", token: 0, marked: false, idx: null, idxP: null };
+  function loadScript(src) {
+    return new Promise((res, rej) => {
+      const el = document.createElement("script");
+      el.src = src;
+      el.onload = () => { el.remove(); res(); };
+      el.onerror = () => { el.remove(); rej(new Error(src + " introuvable")); };
+      document.head.appendChild(el);
+    });
+  }
+  const getJSON = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+  function commIndex() {
+    if (COMM.index) return Promise.resolve(COMM.index);
+    if (!COMM.indexP) {
+      const p = location.protocol === "file:"
+        ? loadScript("commentaire/index.js").then(() => { if (!window.COMMENTAIRE_INDEX) throw new Error("index vide"); return window.COMMENTAIRE_INDEX; })
+        : getJSON("commentaire/index.json");
+      COMM.indexP = p.then((ix) => {
+        ix.has = {};
+        for (const k in ix.livres) ix.has[k] = new Set(ix.livres[k]);
+        COMM.index = ix;
+        return ix;
+      }, (e) => { COMM.indexP = null; throw e; });
+    }
+    return COMM.indexP;
+  }
+  function commBook(code) {
+    if (COMM.books[code]) return Promise.resolve(COMM.books[code]);
+    if (!COMM.bookP[code]) {
+      const p = location.protocol === "file:"
+        ? loadScript("commentaire/" + code + ".js").then(() => {
+          const d = window.COMMENTAIRE && window.COMMENTAIRE[code];
+          if (!d) throw new Error("livre vide");
+          return d;
+        })
+        : getJSON("commentaire/" + code + ".json");
+      COMM.bookP[code] = p.then((d) => (COMM.books[code] = d), (e) => { delete COMM.bookP[code]; throw e; });
+    }
+    return COMM.bookP[code];
+  }
+  // ref = [c1, v1, c2, v2] en numérotation LSG
+  const inRef = (r, c, v) => !!r && (r[0] < c || (r[0] === c && r[1] <= v)) && (r[2] > c || (r[2] === c && r[3] >= v));
+  const touches = (r, c) => !r || (r[0] <= c && r[2] >= c);
+  function refLabel(r, c) {
+    if (r[0] === c && r[2] === c) return r[1] === r[3] ? "verset " + r[1] : "versets " + r[1] + "-" + r[3];
+    return "versets " + r[0] + ":" + r[1] + " à " + r[2] + ":" + r[3];
+  }
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  function secTitle(s, c, always) {
+    if (s.titre) return s.titre;
+    if (s.ref) return cap(refLabel(s.ref, c));
+    return always ? "Introduction" : "";
+  }
+  // Ce que le panneau montre pour le chapitre c : ses sections et son plan qui le concernent, plus ceux des
+  // chapitres voisins qui débordent sur lui (la numérotation anglaise diffère parfois : Job 38 → 39:1-3…).
+  function commFor(bk, c) {
+    const plan = [], secs = [];
+    for (const cc of [c - 1, c, c + 1]) {
+      const ch = bk[cc];
+      if (!ch) continue;
+      const own = cc === c;
+      for (const it of ch.plan || []) if (own ? touches(it.ref, c) : it.ref && touches(it.ref, c)) plan.push(it);
+      ch.sections.forEach((sec, i) => {
+        if (own ? touches(sec.ref, c) : sec.ref && touches(sec.ref, c)) secs.push({ s: sec, key: cc + "." + i, from: own ? 0 : cc });
+      });
+    }
+    return { plan, secs };
+  }
+  const COMM_FOOT = '<p class="cm-foot">Commentaire : Matthew Henry (1706), domaine public ; traduction française Yapson AppStore.</p>';
+  function renderComm(opts) {
+    opts = opts || {};
+    const bi = cur.bi, c = cur.c, b = BOOKS[bi];
+    const id = b.code + "." + c;
+    const tok = ++COMM.token;
+    const body = $("#cm-body");
+    $("#cm-title").textContent = "Commentaire de Matthew Henry — " + chapLabel(bi, c);
+    if (COMM.shown === id && !opts.terms && !COMM.marked) { commTarget(opts); return Promise.resolve(); }
+    if (COMM.shown !== id) { COMM.shown = ""; body.innerHTML = '<p class="cm-msg">Ouverture du commentaire…</p>'; }
+    return commIndex().then((ix) => (ix.has[b.code] ? commBook(b.code) : null)).then((bk) => {
+      if (tok !== COMM.token) return;
+      const f = bk ? commFor(bk, c) : { plan: [], secs: [] };
+      COMM.shown = id; COMM.marked = !!opts.terms;
+      if (!f.secs.length) {
+        body.innerHTML = '<div class="cm-empty"><svg viewBox="0 0 24 24"><use href="#i-commentaire"/></svg><p>Le commentaire de ' + esc(chapLabel(bi, c)) +
+          " n'est pas encore disponible.</p><small>Vous le trouverez peut-être avec le chapitre précédent ou suivant.</small></div>" + COMM_FOOT;
+        body.scrollTop = 0;
+        return;
+      }
+      let h = "";
+      if (f.plan.length) {
+        h += '<nav class="cm-plan" aria-label="Plan du chapitre"><h3>Plan du chapitre</h3><ol>' + f.plan.map((it) =>
+          "<li><button" + (it.ref ? ' data-ref="' + it.ref.join(".") + '"' : " disabled") + "><span>" + esc(it.sujet) + "</span>" +
+          (it.ref ? "<small> · " + refLabel(it.ref, c) + "</small>" : "") + "</button></li>").join("") + "</ol></nav>";
+      }
+      for (const x of f.secs) {
+        const s = x.s, title = secTitle(s, c, f.secs.length > 1);
+        const marks = opts.terms && x.key === opts.key;
+        h += '<section class="cm-sec" data-key="' + x.key + '"' + (s.ref ? ' data-sref="' + s.ref.join(".") + '"' : "") + ">";
+        if (x.from) h += '<div class="cm-from">Suite du commentaire de ' + esc(chapLabel(bi, x.from)) + "</div>";
+        if (title) h += s.ref ? '<h3><button class="cm-st" data-ref="' + s.ref.join(".") + '">' + esc(title) + "</button></h3>" : '<h3 class="cm-intro">' + esc(title) + "</h3>";
+        for (const p of s.paras) h += "<p>" + (marks ? highlight(p, opts.terms) : esc(p)) + "</p>";
+        h += "</section>";
+      }
+      body.innerHTML = h + COMM_FOOT;
+      body.scrollTop = 0;
+      commTarget(opts);
+    }).catch(() => {
+      if (tok !== COMM.token) return;
+      COMM.shown = "";
+      body.innerHTML = '<div class="cm-empty"><svg viewBox="0 0 24 24"><use href="#i-commentaire"/></svg><p>Le commentaire de ce livre ne peut pas être ouvert pour l\'instant.</p><small>' +
+        (navigator.onLine === false ? "Vous êtes hors connexion. Ouvrez-le une fois avec une connexion : il restera ensuite disponible." : "Vérifiez la connexion puis réessayez.") +
+        '</small><button class="chip" data-cm-retry>Réessayer</button></div>';
+    });
+  }
+  const refOfEl = (el) => (el && el.dataset.sref ? el.dataset.sref.split(".").map(Number) : null);
+  // Place le panneau sur une section (clé) ou sur la section qui contient un verset du chapitre lu.
+  function commTarget(opts) {
+    const body = $("#cm-body");
+    const secs = $$(".cm-sec", body);
+    let el = null;
+    if (opts.key) el = body.querySelector('.cm-sec[data-key="' + opts.key + '"]');
+    else if (opts.verse) {
+      const c = cur.c, v = opts.verse;
+      el = secs.find((x) => inRef(refOfEl(x), c, v)) || null;
+      if (!el && secs.length) {
+        for (const x of secs) { const r = refOfEl(x); if (r && (r[0] < c || (r[0] === c && r[1] <= v))) el = x; }
+        el = el || secs[0];
+        toast("Pas de section propre au verset " + v + " : voici la plus proche");
+      }
+    }
+    if (!el) return;
+    secs.forEach((x) => x.classList.toggle("on", x === el));
+    body.scrollTop = Math.max(0, el.offsetTop - 6);
+    if (opts.showVerses && refOfEl(el)) showRange(refOfEl(el));
+  }
+  // Met en évidence dans le texte les versets d'une référence (partie du chapitre lu) et y défile.
+  function showRange(r) {
+    const b = BOOKS[cur.bi], c = cur.c;
+    if (r[0] > c || r[2] < c) return;
+    const start = b.chStart[c - 1], n = b.ch[c - 1].length;
+    const v1 = r[0] < c ? 1 : r[1], v2 = r[2] > c ? n : Math.min(n, r[3]);
+    $$("#r-text .v.target").forEach((x) => x.classList.remove("target"));
+    let first = null;
+    for (let v = v1; v <= v2; v++) {
+      const el = $('#r-text [data-g="' + (start + v - 1) + '"]');
+      if (el) { el.classList.add("target"); first = first || el; }
+    }
+    if (first) scrollToVerse(first, "top");
+  }
+  function openComm(opts) {
+    COMM.open = true;
+    syncComm(true);
+    return renderComm(opts || {});
+  }
+  function closeComm() {
+    COMM.open = false;
+    syncComm();
+  }
+  function syncComm(noRender) {
+    const vis = COMM.open && curTab === "lire" && !pickerOpen;
+    $("#comm").hidden = !vis;
+    document.body.classList.toggle("cm-open", vis);
+    document.body.classList.toggle("cm-short", vis && !COMM.tall);
+    const btn = $("#r-comm");
+    btn.classList.toggle("on", COMM.open);
+    btn.setAttribute("aria-pressed", String(COMM.open));
+    if (vis && !noRender && rendered && COMM.shown !== BOOKS[cur.bi].code + "." + cur.c) renderComm();
+  }
+  function bindComm() {
+    $("#r-comm").addEventListener("click", () => (COMM.open ? closeComm() : openComm({})));
+    $("#cm-close").addEventListener("click", closeComm);
+    $("#cm-body").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-ref]");
+      if (b) {
+        const sec = b.closest(".cm-sec");
+        if (sec) $$("#cm-body .cm-sec").forEach((x) => x.classList.toggle("on", x === sec));
+        showRange(b.dataset.ref.split(".").map(Number));
+        return;
+      }
+      if (e.target.closest("[data-cm-retry]")) renderComm({});
+    });
+    // Téléphone : la poignée agrandit / réduit la feuille ; la glisser vers le bas la ferme.
+    let y0 = null, fromGrip = false;
+    const down = (e) => {
+      if (e.target.closest("button") || matchMedia("(min-width: 900px)").matches) return;
+      y0 = e.clientY; fromGrip = !!e.target.closest("#cm-grip");
+    };
+    $("#cm-grip").addEventListener("pointerdown", down);
+    $(".cm-head").addEventListener("pointerdown", down);
+    window.addEventListener("pointerup", (e) => {
+      if (y0 == null) return;
+      const dy = e.clientY - y0;
+      y0 = null;
+      if (Math.abs(dy) < 8) { if (fromGrip) { COMM.tall = !COMM.tall; syncComm(); } return; }
+      if (dy > 240 || (dy > 90 && !COMM.tall)) closeComm();
+      else if (dy > 30) { COMM.tall = false; syncComm(); }
+      else if (dy < -30) { COMM.tall = true; syncComm(); }
+    });
+    window.addEventListener("pointercancel", () => { y0 = null; });
+  }
+  // Extrait d'une section autour de la première occurrence, mots trouvés surlignés.
+  function commSnippet(sec, terms) {
+    for (const p of sec.paras) {
+      for (const t of terms) {
+        t.hre.lastIndex = 0;
+        const m = t.hre.exec(p);
+        if (!m) continue;
+        const at = m.index + m[1].length;
+        let a = Math.max(0, at - 90), z = Math.min(p.length, at + m[2].length + 150);
+        if (a > 0) { const sp = p.indexOf(" ", a); if (sp >= 0 && sp < at) a = sp + 1; }
+        if (z < p.length) { const sp = p.lastIndexOf(" ", z); if (sp > at + m[2].length) z = sp; }
+        return (a > 0 ? "… " : "") + highlight(p.slice(a, z), terms) + (z < p.length ? " …" : "");
+      }
+    }
+    const p = sec.paras[0] || "";
+    return esc(p.slice(0, 220)) + (p.length > 220 ? " …" : "");
+  }
+  // Index de recherche du commentaire : construit seulement quand la case est cochée (tous les livres).
+  function ensureCommIndex() {
+    if (COMM.idx) return Promise.resolve(COMM.idx);
+    if (COMM.idxP) return COMM.idxP;
+    COMM.idxP = commIndex().then((ix) => {
+      const codes = Object.keys(ix.livres).filter((k) => CODE[k]).sort((x, y) => CODE[x].i - CODE[y].i);
+      return Promise.all(codes.map(commBook)).then(() => new Promise((resolve) => {
+        const out = [];
+        let i = 0;
+        const step = () => {
+          const end = Math.min(codes.length, i + 6);
+          for (; i < end; i++) {
+            const bk = COMM.books[codes[i]], bi = CODE[codes[i]].i;
+            for (const ck of Object.keys(bk).sort((x, y) => x - y)) {
+              bk[ck].sections.forEach((sec, j) => out.push({ bi, cc: +ck, key: ck + "." + j, s: sec, n: norm(sec.paras.join("\n")) }));
+            }
+          }
+          if (i < codes.length) { setTimeout(step, 0); return; }
+          COMM.idx = out;
+          resolve(out);
+        };
+        step();
+      }));
+    }).catch((e) => { COMM.idxP = null; throw e; });
+    return COMM.idxP;
+  }
+  function runCommSearch(q, mode, scope) {
+    const terms = compileTerms(parseQuery(q), mode);
+    if (!terms.length || !COMM.idx) return null;
+    const [lo, hi] = scope === "AT" ? [0, CODE.MAT.i] : scope === "NT" ? [CODE.MAT.i, BOOKS.length] : CODE[scope] ? [CODE[scope].i, CODE[scope].i + 1] : [0, BOOKS.length];
+    const list = [];
+    let occ = 0;
+    for (const x of COMM.idx) {
+      if (x.bi < lo || x.bi >= hi) continue;
+      let n = 0, ok = true;
+      for (const t of terms) {
+        if (!x.n.includes(t.toks[0])) { ok = false; break; }
+        t.re.lastIndex = 0;
+        let k = 0;
+        while (t.re.exec(x.n)) k++;
+        if (!k) { ok = false; break; }
+        n += k;
+      }
+      if (ok) { list.push(x); occ += n; }
+    }
+    return { list, occ, terms };
   }
 
   // ------------------------------------------------------------------ mes versets
@@ -1286,6 +1646,7 @@ JUD.1.24 REV.3.20 REV.21.4 REV.21.5 REV.22.13 REV.22.20
       $("#votd-ref").textContent = refOf(votdG);
     }
     $("#resume-ref").textContent = chapLabel(cur.bi, cur.c) + (cur.v > 1 ? ":" + cur.v : "");
+    $("#home-comm-ref").textContent = chapLabel(cur.bi, cur.c);
     // Plan du jour
     const box = $("#home-plan");
     const active = PLANDEFS.filter((p) => PLANSTATE[p.id]);
@@ -1308,6 +1669,7 @@ JUD.1.24 REV.3.20 REV.21.4 REV.21.5 REV.22.13 REV.22.20
     $("#votd-text").addEventListener("click", () => { if (votdG >= 0) openRef(VB[votdG], VC[votdG], VV[votdG]); });
     $("#votd-share").addEventListener("click", () => { if (votdG >= 0) shareText(selText([votdG])); });
     $("#resume").addEventListener("click", () => showTab("lire"));
+    $("#home-comm-go").addEventListener("click", () => { showTab("lire"); openComm({}); });
     document.addEventListener("click", (e) => {
       const b = e.target.closest("[data-go]");
       if (!b) return;
@@ -1317,7 +1679,7 @@ JUD.1.24 REV.3.20 REV.21.4 REV.21.5 REV.22.13 REV.22.20
     });
     // Liens de téléchargement : seulement sur le site, et seulement si le fichier existe.
     if (!IS_APP && /^https?:$/.test(location.protocol)) {
-      const show = (d) => { $("#dl-epub").hidden = !d.epub; $("#dl-apk").hidden = !d.apk; };
+      const show = (d) => { $("#dl-epub").hidden = !d.epub; $("#dl-epubc").hidden = !d["epub-commentaire"]; $("#dl-apk").hidden = !d.apk; };
       show(store.get("dispo", {}));
       if (navigator.onLine !== false) {
         fetch("/dispo", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
@@ -1451,7 +1813,9 @@ JUD.1.24 REV.3.20 REV.21.4 REV.21.5 REV.22.13 REV.22.20
     }
     buildPlans();
     applySettings();
-    bindSettings(); bindReader(); bindPicker(); bindVbar(); bindNotes(); bindSearch(); bindMine(); bindBackup(); bindPlans(); bindHome(); bindTTS();
+    bindSettings(); bindReader(); bindPicker(); bindVbar(); bindNotes(); bindSearch(); bindMine(); bindBackup(); bindPlans(); bindHome(); bindTTS(); bindComm();
+    // Petit index du commentaire (quelques Ko) : affiche les boutons « Commentaire » s'il existe.
+    commIndex().then(() => { document.body.classList.add("has-comm"); $("#home-comm").hidden = false; }).catch(() => {});
     $$(".tabbar button").forEach((b) => b.addEventListener("click", () => {
       if (b.dataset.tab === curTab) {
         if (curTab === "lire" && pickerOpen) closePicker();
@@ -1480,7 +1844,8 @@ JUD.1.24 REV.3.20 REV.21.4 REV.21.5 REV.22.13 REV.22.20
     // L'index de recherche se prépare tranquillement après l'ouverture.
     const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1500));
     idle(() => ensureIndex());
-    window.__bible = { runSearch: (q, m, s) => runSearch(q, m || "mot", s || "tout"), ensureIndex, parseRef, refOf, verseOfDay, N: () => N };
+    window.__bible = { runSearch: (q, m, s) => runSearch(q, m || "mot", s || "tout"), ensureIndex, parseRef, refOf, verseOfDay, N: () => N,
+      openComm, ensureCommIndex, runCommSearch: (q, m, s) => runCommSearch(q, m || "mot", s || "tout") };
   }
   registerSW();
   loadData().then(init).catch((e) => {

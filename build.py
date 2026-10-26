@@ -2,7 +2,7 @@
 """Construit le site de « Bible LSG » à partir du fichier JSON du texte biblique.
 
 Usage :
-    python3 build.py chemin/vers/bible-lsg.json [--icones] [--sans-epub]
+    python3 build.py chemin/vers/bible-lsg.json [--commentaire commentaire.json] [--icones] [--sans-epub]
 
 Ce que fait le script :
   1. vérifie le fichier (66 livres, format attendu) et l'écrit, compacté, dans web/bible.json ;
@@ -13,6 +13,13 @@ Ce que fait le script :
   5. fabrique l'ePub web/bible-lsg.epub (sauf --sans-epub) ;
   6. copie le site dans android/app/src/main/assets/ (avec bible.js au lieu de bible.json :
      la WebView Android ne sait pas faire fetch() sur file://).
+
+Commentaire de Matthew Henry (--commentaire chemin.json) :
+  le fichier est vérifié puis découpé par livre dans web/commentaire/GEN.json … (+ index.json : titre,
+  licence, chapitres commentés) : l'appli ne charge que le livre lu. L'APK reçoit les mêmes données en
+  commentaire/GEN.js … (balises script). L'ePub web/commentaire-matthew-henry.epub est fabriqué à côté
+  (outils/epub_commentaire.py, sauf --sans-epub).
+  Sans --commentaire, le commentaire déjà présent dans web/commentaire/ est conservé et recopié dans l'APK.
 
 Relancer `python3 build.py web/bible.json --sans-epub` régénère tout à l'identique (c'est ce que fait la CI).
 """
@@ -28,6 +35,7 @@ import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent
 WEB = ROOT / "web"
+COMM_DIR = WEB / "commentaire"
 ASSETS = ROOT / "android/app/src/main/assets"
 RES = ROOT / "android/app/src/main/res"
 
@@ -191,6 +199,106 @@ def make_icons(force):
     print("Icônes dessinées")
 
 
+# ---------------------------------------------------------------- commentaire
+def load_commentaire(path, data):
+    """Vérifie le commentaire (format décrit dans le README) ; renvoie le dict complet."""
+    try:
+        cm = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        die(f"commentaire illisible : {e}")
+    if not isinstance(cm, dict) or not isinstance(cm.get("livres"), dict):
+        die("commentaire : objet « livres » attendu")
+    books = {b["code"]: b for b in data["livres"]}
+    nsec = npar = nch = 0
+    bad_refs = []
+
+    def ref_ok(code, r):
+        if r is None:
+            return True
+        if not (isinstance(r, list) and len(r) == 4 and all(isinstance(x, int) for x in r)):
+            return False
+        c1, v1, c2, v2 = r
+        chs = books[code]["chapitres"]
+        if not (1 <= c1 <= len(chs) and 1 <= c2 <= len(chs)) or (c1, v1) > (c2, v2):
+            return False
+        return 1 <= v1 <= len(chs[c1 - 1]) and 1 <= v2 <= len(chs[c2 - 1])
+
+    for code, chaps in cm["livres"].items():
+        if code not in books:
+            die(f"commentaire : livre inconnu « {code} »")
+        if not isinstance(chaps, dict):
+            die(f"commentaire {code} : objet des chapitres attendu")
+        for ck, ch in chaps.items():
+            if not ck.isdigit() or not 1 <= int(ck) <= len(books[code]["chapitres"]):
+                die(f"commentaire {code} : chapitre « {ck} » inexistant")
+            if not isinstance(ch, dict) or not isinstance(ch.get("sections"), list):
+                die(f"commentaire {code} {ck} : « sections » attendu")
+            ch.setdefault("plan", [])
+            if not isinstance(ch["plan"], list):
+                die(f"commentaire {code} {ck} : « plan » doit être une liste")
+            for it in ch["plan"]:
+                if not isinstance(it, dict) or not isinstance(it.get("sujet"), str):
+                    die(f"commentaire {code} {ck} : élément de plan invalide")
+                if not ref_ok(code, it.get("ref")):
+                    bad_refs.append(f"{code} {ck} plan {it.get('ref')}")
+                    it["ref"] = None
+            for s in ch["sections"]:
+                if not isinstance(s, dict) or not isinstance(s.get("paras"), list) or not all(isinstance(p, str) for p in s["paras"]):
+                    die(f"commentaire {code} {ck} : section invalide (« paras » : liste de textes)")
+                s["titre"] = s.get("titre") or ""
+                if not ref_ok(code, s.get("ref")):
+                    bad_refs.append(f"{code} {ck} « {s['titre']} » {s.get('ref')}")
+                    s["ref"] = None
+                s.setdefault("ref", None)
+                nsec += 1
+                npar += len(s["paras"])
+            nch += 1
+    total = sum(len(b["chapitres"]) for b in data["livres"])
+    missing = [f"{b['code']} {i + 1}" for b in data["livres"] for i in range(len(b["chapitres"]))
+               if str(i + 1) not in cm["livres"].get(b["code"], {})]
+    print(f"Commentaire : {cm.get('titre', '?')} — {len(cm['livres'])} livres, {nch}/{total} chapitres, "
+          f"{nsec} sections, {npar} paragraphes")
+    if missing:
+        print(f"  chapitres sans commentaire ({len(missing)}) : {', '.join(missing[:12])}{' …' if len(missing) > 12 else ''}")
+    if bad_refs:
+        print(f"  références invalides mises à null ({len(bad_refs)}) : {bad_refs[:6]}")
+    return cm
+
+
+def write_commentaire(cm):
+    """web/commentaire/index.json + un fichier par livre (ordre canonique)."""
+    if COMM_DIR.exists():
+        shutil.rmtree(COMM_DIR)
+    COMM_DIR.mkdir(parents=True)
+    index = {k: v for k, v in cm.items() if k != "livres"}
+    index["livres"] = {}
+    for code in CANON:
+        chaps = cm["livres"].get(code)
+        if not chaps:
+            continue
+        chaps = dict(sorted(chaps.items(), key=lambda kv: int(kv[0])))
+        index["livres"][code] = [int(k) for k in chaps]
+        (COMM_DIR / f"{code}.json").write_text(json.dumps(chaps, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    (COMM_DIR / "index.json").write_text(json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    size = sum(f.stat().st_size for f in COMM_DIR.iterdir())
+    print(f"web/commentaire/ : {len(index['livres'])} livres + index.json ({size / 1e6:.2f} Mo)")
+
+
+def read_commentaire_files():
+    """Fichiers du commentaire déjà présents dans web/commentaire/ : [(nom, texte)], index en premier."""
+    idx = COMM_DIR / "index.json"
+    if not idx.exists():
+        return []
+    index = json.loads(idx.read_text(encoding="utf-8"))
+    out = [("index", idx.read_text(encoding="utf-8"))]
+    for code in index.get("livres", {}):
+        f = COMM_DIR / f"{code}.json"
+        if not f.exists():
+            die(f"web/commentaire/{code}.json manquant (relancer avec --commentaire)")
+        out.append((code, f.read_text(encoding="utf-8")))
+    return out
+
+
 # ---------------------------------------------------------------- ePub
 def make_epub(data, out):
     livres = data["livres"]
@@ -258,8 +366,16 @@ def make_epub(data, out):
 
 # ---------------------------------------------------------------- principal
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    argv = sys.argv[1:]
+    comm_src = None
+    if "--commentaire" in argv:
+        i = argv.index("--commentaire")
+        if i + 1 >= len(argv):
+            die("--commentaire : chemin du fichier JSON manquant")
+        comm_src = argv[i + 1]
+        del argv[i:i + 2]
+    args = [a for a in argv if not a.startswith("--")]
+    flags = {a for a in argv if a.startswith("--")}
     if len(args) != 1:
         print(__doc__)
         sys.exit(2)
@@ -275,18 +391,31 @@ def main():
     check_refs(data)
     make_icons("--icones" in flags)
 
+    # Commentaire : nouveau fichier fourni, sinon celui déjà présent dans web/commentaire/
+    if comm_src:
+        write_commentaire(load_commentaire(comm_src, data))
+    comm_files = read_commentaire_files()
+    if comm_files and not comm_src:
+        print(f"Commentaire conservé : web/commentaire/ ({len(comm_files) - 1} livres)")
+    hc = hashlib.sha256()
+    for name, text in comm_files:
+        hc.update(name.encode() + b"\0" + text.encode())
+    comm_version = hc.hexdigest()[:10] if comm_files else "aucun"
+
     # 2. Version d'après le contenu (indépendante des numéros de version déjà écrits)
     h = hashlib.sha256(raw.encode())
+    h.update(comm_version.encode())
     for f in APP_FILES + ["sw.js"]:
         b = (WEB / f).read_bytes()
         if f in ("index.html", "sw.js"):
             b = re.sub(rb'(VERSION = "|name="version" content=")[^"]*', rb"\1", b)
         h.update(b)
     version = h.hexdigest()[:10]
-    for f, pat in (("sw.js", r'(const VERSION = ")[^"]*'), ("index.html", r'(name="version" content=")[^"]*')):
+    for f, pat, val in (("sw.js", r'(const VERSION = ")[^"]*', version), ("index.html", r'(name="version" content=")[^"]*', version),
+                        ("sw.js", r'(const COMM_VERSION = ")[^"]*', comm_version)):
         p = WEB / f
         t = p.read_text(encoding="utf-8")
-        nt = re.sub(pat, lambda m: m.group(1) + version, t, count=1)
+        nt = re.sub(pat, lambda m: m.group(1) + val, t, count=1)
         if nt != t:
             p.write_text(nt, encoding="utf-8")
     print("Version :", version)
@@ -296,6 +425,9 @@ def main():
         # ePub validé par EPUBCheck (outils/epub_bible.py).
         import subprocess
         subprocess.run([sys.executable, str(ROOT / "outils" / "epub_bible.py"), str(args[0]), str(WEB / "bible-lsg.epub")], check=True)
+        if comm_src:
+            subprocess.run([sys.executable, str(ROOT / "outils" / "epub_commentaire.py"), str(comm_src), str(args[0]),
+                            str(WEB / "commentaire-matthew-henry.epub")], check=True)
 
     # 4. Copie Android (100 % hors ligne)
     if ASSETS.exists():
@@ -304,6 +436,12 @@ def main():
     for f in APP_FILES:
         shutil.copy2(WEB / f, ASSETS / f)
     (ASSETS / "bible.js").write_text("window.BIBLE_DATA=" + raw + ";\n", encoding="utf-8")
+    if comm_files:
+        (ASSETS / "commentaire").mkdir()
+        for name, text in comm_files:
+            js = ("window.COMMENTAIRE_INDEX=" if name == "index" else
+                  "(window.COMMENTAIRE=window.COMMENTAIRE||{})[" + json.dumps(name) + "]=") + text + ";\n"
+            (ASSETS / "commentaire" / f"{name}.js").write_text(js, encoding="utf-8")
     print("Assets Android copiés dans", ASSETS.relative_to(ROOT))
 
 

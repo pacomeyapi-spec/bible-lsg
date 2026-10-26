@@ -7,6 +7,7 @@ on:
       - "web/**"
       - "!web/BibleLSG.apk"
       - "!web/bible-lsg.epub"
+      - "!web/commentaire-matthew-henry.epub"
       - "android/**"
       - "build.py"
       - ".github/workflows/**"
@@ -31,6 +32,7 @@ jobs:
           gradle-version: "8.9"
 
       # Recopie web/ dans les assets Android (au cas où ils n'auraient pas été régénérés avant le push).
+      # Le commentaire déjà présent dans web/commentaire/ est conservé et recopié (commentaire/*.js).
       - name: Synchroniser le site dans l'APK
         run: python3 -B build.py web/bible.json --sans-epub
 

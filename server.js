@@ -1,5 +1,5 @@
 // Serveur statique de Bible LSG (site web / iPhone), sans dépendance.
-// Sert web/ avec compression gzip (mise en mémoire), ETag, et deux liens courts : /apk et /epub.
+// Sert web/ avec compression gzip (mise en mémoire), ETag, et des liens courts : /apk, /epub, /epub-commentaire.
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -22,7 +22,8 @@ const TYPES = {
 const COMPRESS = new Set([".html", ".js", ".css", ".json", ".webmanifest", ".svg"]);
 const DOWNLOADS = {
   "/apk": ["BibleLSG.apk", "BibleLSG.apk"],
-  "/epub": ["bible-lsg.epub", "Bible-Louis-Segond-1910.epub"]
+  "/epub": ["bible-lsg.epub", "Bible-Louis-Segond-1910.epub"],
+  "/epub-commentaire": ["commentaire-matthew-henry.epub", "Commentaire-concis-Matthew-Henry.epub"]
 };
 
 // Cache mémoire : fichier -> { mtime, size, data, gz, etag }
